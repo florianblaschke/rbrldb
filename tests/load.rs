@@ -1,23 +1,16 @@
-use std::sync::Arc;
-use tokio::sync::RwLock;
-
 use axum_test::TestServer;
-use rbrldb::{
-    memory::{Db, Store},
-    startup::{KeyValuePair, build_app},
-};
+use rbrldb::{memory::Value, startup::build_app};
 
 #[tokio::test]
 async fn write_test() {
-    let db = Arc::new(RwLock::new(Db::new()));
-    let app = build_app(db);
+    let app = build_app();
     let server = TestServer::new(app);
 
     let res = server
-        .post("/insert")
-        .json(&KeyValuePair {
-            key: "foo".to_string(),
-            value: "bar".to_string(),
+        .post("/insert/foo")
+        .json(&Value {
+            data: "bar".as_bytes().to_owned(),
+            ttl: None,
         })
         .await;
     assert!(res.status_code().is_success())
@@ -25,15 +18,14 @@ async fn write_test() {
 
 #[tokio::test]
 async fn read_test() {
-    let db = Arc::new(RwLock::new(Db::new()));
-    let app = build_app(db);
+    let app = build_app();
     let server = TestServer::new(app);
 
     let res = server
-        .post("/insert")
-        .json(&KeyValuePair {
-            key: "foo".to_string(),
-            value: "bar".to_string(),
+        .post("/insert/foo")
+        .json(&Value {
+            data: "bar".as_bytes().to_owned(),
+            ttl: None,
         })
         .await;
     assert!(res.status_code().is_success());

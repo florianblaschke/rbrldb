@@ -1,13 +1,21 @@
 use std::collections::HashMap;
 
+use serde::{Deserialize, Serialize};
+
 pub trait Store {
     fn new() -> Self;
-    fn set(&mut self, key: String, value: String);
-    fn get(&self, key: String) -> Option<String>;
+    fn set(&mut self, key: String, value: Value);
+    fn get(&self, key: String) -> Vec<u8>;
 }
 
 pub struct Db {
-    map: HashMap<String, String>,
+    map: HashMap<String, Value>,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct Value {
+    pub data: Vec<u8>,
+    pub ttl: Option<i64>,
 }
 
 impl Store for Db {
@@ -17,11 +25,17 @@ impl Store for Db {
         }
     }
 
-    fn set(&mut self, key: String, value: String) {
+    fn set(&mut self, key: String, value: Value) {
         self.map.insert(key, value);
     }
 
-    fn get(&self, key: String) -> Option<String> {
-        self.map.get(&key).cloned()
+    fn get(&self, key: String) -> Vec<u8> {
+        let value = self.map.get(&key);
+        let res = match value {
+            Some(v) => v.data.clone(),
+            None => Vec::new(),
+        };
+
+        res
     }
 }

@@ -4,48 +4,39 @@ use tokio::sync::RwLock;
 use axum::{
     Json, Router,
     extract::{Path, State},
+    http::StatusCode,
     routing::{get, post},
 };
-use reqwest::StatusCode;
-use serde::{Deserialize, Serialize};
 
-use crate::memory::{Db, Store};
+use crate::memory::{Db, Store, Value};
 
 pub type Memory = Arc<RwLock<Db>>;
 
-pub fn build_app(db: Memory) -> Router {
+pub fn build_app() -> Router {
     Router::new()
-        .route("/insert", post(insert_handler))
+        .route("/insert/{key}", post(insert_handler))
         .route("/get/{key}", get(get_handler))
-        .with_state(db)
+        .with_state(store())
 }
 
-#[derive(Deserialize, Serialize)]
-pub struct KeyValuePair {
-    pub key: String,
-    pub value: String,
-}
-
-pub async fn get_handler(State(db): State<Memory>, Path(key): Path<String>) -> String {
+pub async fn get_handler(State(db): State<Memory>, Path(key): Path<String>) -> Vec<u8> {
     let memory = db.read().await;
     let res = memory.get(key);
 
-    match res {
-        Some(s) => s.to_string(),
-        None => "".to_string(),
-    }
+    res
 }
 
 pub async fn insert_handler(
     State(db): State<Memory>,
-    Json(payload): Json<KeyValuePair>,
+    Path(key): Path<String>,
+    Json(payload): Json<Value>,
 ) -> StatusCode {
     let mut memory = db.write().await;
-    memory.set(payload.key, payload.value);
+    memory.set(key, payload);
 
     StatusCode::OK
 }
 
-pub async fn store(State(db): State<Memory>) -> Memory {
-    db
+pub fn store() -> Memory {
+    Arc::new(RwLock::new(Db::new()))
 }
