@@ -1,108 +1,56 @@
-use std::time::Instant;
-
-use axum_test::TestServer;
-use rbrldb::{memory::Value, startup::build_app};
+use rbrldb::startup::start_db;
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::TcpStream,
+    time::Instant,
+};
 
 #[tokio::test]
-async fn write_test() {
-    let app = build_app();
-    let server = TestServer::new(app);
+async fn health_test() {
+    let addr = start_db("127.0.0.1:0").await;
 
-    let res = server
-        .post("/insert/foo")
-        .json(&Value {
-            data: "bar".as_bytes().to_owned(),
-            ttl: None,
-        })
-        .await;
-    assert!(res.status_code().is_success())
+    let mut stream = TcpStream::connect(addr).await.unwrap();
+    stream.write(b"!;\r\n").await.unwrap();
+
+    let mut buf = vec![0u8; 1024];
+    let n = stream.read(&mut buf).await.unwrap();
+    let response = std::str::from_utf8(&buf[..n]).unwrap();
+
+    assert_eq!(response, "ok");
 }
 
 #[tokio::test]
-async fn read_test() {
-    let app = build_app();
-    let server = TestServer::new(app);
+async fn insert_test() {
+    let addr = start_db("127.0.0.1:0").await;
 
-    let res = server
-        .post("/insert/foo")
-        .json(&Value {
-            data: "bar".as_bytes().to_owned(),
-            ttl: None,
-        })
-        .await;
-    assert!(res.status_code().is_success());
+    // now act as a client
+    let mut stream = TcpStream::connect(addr).await.unwrap();
+    stream.write(b"!;\r\n").await.unwrap();
+    let mut buf = vec![0u8; 1024];
+    let n = stream.read(&mut buf).await.unwrap();
+    let response = std::str::from_utf8(&buf[..n]).unwrap();
 
-    let read_result = server.get("/get/foo").await;
-
-    assert_eq!(read_result.text(), "bar".to_string());
-}
-
-#[tokio::test]
-async fn multiple_writes_and_reads() {
-    let app = build_app();
-    let server = TestServer::new(app);
-    let num_entries = 1_000_000;
+    assert_eq!(response, "ok");
 
     let start = Instant::now();
-    println!("start insert");
+    for i in 0..1_000_000 {
+        let s = format!("+;{}$3;{}\r\n", i, i);
+        stream.write(s.as_bytes()).await.unwrap();
+        let mut buf = vec![0u8; 1024];
+        let _ = stream.read(&mut buf).await.unwrap();
+    }
+    let insert_finished = start.elapsed();
+    println!("Insert took: {:?}", insert_finished);
 
-    for i in 0..num_entries {
-        let key = format!("key_{i}");
-        let value = format!("value_{i}");
-        let res = server
-            .post(&format!("/insert/{key}"))
-            .json(&Value {
-                data: value.as_bytes().to_owned(),
-                ttl: None,
-            })
-            .await;
-        assert!(res.status_code().is_success());
+    for i in 0..1_000_000 {
+        let s = format!("?;{}\r\n", i);
+        stream.write(s.as_bytes()).await.unwrap();
+        let mut buf = vec![0u8; 1024];
+        let n = stream.read(&mut buf).await.unwrap();
+        let response = std::str::from_utf8(&buf[..n]).unwrap();
+        assert_eq!(response, &i.to_string());
     }
 
-    let end_write = Instant::now() - start;
-    println!("End write in: {:?}", end_write);
-
-    for i in 0..num_entries {
-        let key = format!("key_{i}");
-        let expected = format!("value_{i}");
-        let res = server.get(&format!("/get/{key}")).await;
-        assert_eq!(res.text(), expected);
-    }
-
-    let end_read = Instant::now() - start;
-    println!("End read in: {:?}", end_read);
-}
-
-#[tokio::test]
-async fn overwrite_existing_key() {
-    let app = build_app();
-    let server = TestServer::new(app);
-
-    server
-        .post("/insert/mykey")
-        .json(&Value {
-            data: "first".as_bytes().to_owned(),
-            ttl: None,
-        })
-        .await;
-
-    server
-        .post("/insert/mykey")
-        .json(&Value {
-            data: "second".as_bytes().to_owned(),
-            ttl: None,
-        })
-        .await;
-
-    let res = server.get("/get/mykey").await;
-    assert_eq!(res.text(), "second");
-}
-
-#[tokio::test]
-async fn get_nonexistent_key_returns_empty() {
-    let app = build_app();
-    let server = TestServer::new(app);
-
-    let res = server.get("/get/doesnotexist").await;
-    assert_eq!(res.text(), "");
+    let elapsed = start.elapsed();
+    println!("Took: {:?}", elapsed);
 }

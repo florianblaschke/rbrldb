@@ -1,6 +1,5 @@
-use std::collections::HashMap;
-
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 pub trait Store {
     fn new() -> Self;
@@ -8,11 +7,12 @@ pub trait Store {
     fn get(&self, key: String) -> Vec<u8>;
 }
 
+#[derive(Debug)]
 pub struct Db {
     map: HashMap<String, Value>,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct Value {
     pub data: Vec<u8>,
     pub ttl: Option<i64>,

@@ -1,42 +1,37 @@
-use std::sync::Arc;
-use tokio::sync::RwLock;
-
-use axum::{
-    Json, Router,
-    extract::{Path, State},
-    http::StatusCode,
-    routing::{get, post},
+use crate::{
+    channel::{ChannelPayload, send_command_to_channel, spawn_channel},
+    connect::Connection,
+};
+use anyhow::Result;
+use tokio::{
+    net::{TcpListener, TcpStream},
+    sync::mpsc::Sender,
 };
 
-use crate::memory::{Db, Store, Value};
+pub async fn start_db(addr: &str) -> std::net::SocketAddr {
+    let listener = TcpListener::bind(addr).await.unwrap();
+    let local_addr = listener.local_addr().unwrap();
+    let tx = spawn_channel();
 
-pub type Memory = Arc<RwLock<Db>>;
+    tokio::spawn(async move {
+        loop {
+            let (stream, _) = listener.accept().await.unwrap();
+            let sender = tx.clone();
+            tokio::spawn(async move { handle_stream(stream, sender).await });
+        }
+    });
 
-pub fn build_app() -> Router {
-    Router::new()
-        .route("/insert/{key}", post(insert_handler))
-        .route("/get/{key}", get(get_handler))
-        .with_state(store())
+    local_addr
 }
 
-pub async fn get_handler(State(db): State<Memory>, Path(key): Path<String>) -> Vec<u8> {
-    let memory = db.read().await;
-    let res = memory.get(key);
+async fn handle_stream(stream: TcpStream, channel: Sender<ChannelPayload>) -> Result<()> {
+    let mut connection = Connection::new(stream);
 
-    res
-}
+    while let Some(bytes) = connection.read().await.unwrap() {
+        let value = send_command_to_channel(&channel, &bytes).await?;
+        let _ = connection.write(&value.as_bytes()).await;
+        connection.flush().await?;
+    }
 
-pub async fn insert_handler(
-    State(db): State<Memory>,
-    Path(key): Path<String>,
-    Json(payload): Json<Value>,
-) -> StatusCode {
-    let mut memory = db.write().await;
-    memory.set(key, payload);
-
-    StatusCode::OK
-}
-
-pub fn store() -> Memory {
-    Arc::new(RwLock::new(Db::new()))
+    Ok(())
 }
