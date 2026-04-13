@@ -28,7 +28,7 @@ impl Command {
 }
 
 fn parse(b: &BytesMut) -> Result<(CommandType, Option<Payload>)> {
-    let s = from_utf8(&b)?;
+    let s = from_utf8(b)?;
     let (command_type, rest) = s
         .split_once(";")
         .ok_or_else(|| anyhow!("invalid command, missing ;"))?;

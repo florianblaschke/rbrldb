@@ -1,10 +1,11 @@
+use anyhow::{Result, anyhow};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 pub trait Store {
     fn new() -> Self;
     fn set(&mut self, key: String, value: Value);
-    fn get(&self, key: String) -> Vec<u8>;
+    fn get(&self, key: &str) -> Result<Vec<u8>>;
 }
 
 #[derive(Debug)]
@@ -29,13 +30,13 @@ impl Store for Db {
         self.map.insert(key, value);
     }
 
-    fn get(&self, key: String) -> Vec<u8> {
-        let value = self.map.get(&key);
-        let res = match value {
-            Some(v) => v.data.clone(),
-            None => Vec::new(),
-        };
+    fn get(&self, key: &str) -> Result<Vec<u8>> {
+        let value = self.map.get(key);
 
-        res
+        if let Some(v) = value {
+            Ok(v.data.clone())
+        } else {
+            Err(anyhow!("nf"))
+        }
     }
 }

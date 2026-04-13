@@ -1,5 +1,3 @@
-use std::str::from_utf8;
-
 use anyhow::{Result, anyhow};
 use bytes::BytesMut;
 use tokio::sync::{
@@ -14,7 +12,23 @@ use crate::{
 
 pub struct ChannelPayload {
     command: Command,
-    responder: oneshot::Sender<String>,
+    responder: oneshot::Sender<Vec<u8>>,
+}
+
+enum Response {
+    Ok,
+    NotFound,
+    Error,
+}
+
+impl AsRef<[u8]> for Response {
+    fn as_ref(&self) -> &[u8] {
+        match self {
+            Self::Ok => b"ok",
+            Self::Error => b"error",
+            Self::NotFound => b"nf",
+        }
+    }
 }
 
 pub fn spawn_channel() -> Sender<ChannelPayload> {
@@ -25,7 +39,7 @@ pub fn spawn_channel() -> Sender<ChannelPayload> {
         while let Some(ChannelPayload { command, responder }) = rx.recv().await {
             match command.kind {
                 CommandType::Health => {
-                    let _ = responder.send("ok".to_string()).unwrap();
+                    responder.send(Response::Ok.as_ref().into()).unwrap();
                 }
                 CommandType::Insert => {
                     if let Some(payload) = command.payload {
@@ -36,13 +50,23 @@ pub fn spawn_channel() -> Sender<ChannelPayload> {
                                 ttl: None,
                             },
                         );
-                        let _ = responder.send("ok".to_string());
+                        responder.send(Response::Ok.as_ref().into()).unwrap();
+                    } else {
+                        responder.send(Response::Error.as_ref().into()).unwrap();
                     }
                 }
                 CommandType::Get => {
                     if let Some(payload) = command.payload {
-                        let value = db.get(payload.key);
-                        let _ = responder.send(from_utf8(&value).unwrap().to_string());
+                        match db.get(&payload.key) {
+                            Ok(v) => {
+                                responder.send(v).unwrap();
+                            }
+                            Err(_) => {
+                                responder.send(Response::NotFound.as_ref().into()).unwrap();
+                            }
+                        }
+                    } else {
+                        responder.send(Response::Error.as_ref().into()).unwrap();
                     }
                 }
                 CommandType::Delete => panic!("not implemented delete"),
@@ -56,8 +80,8 @@ pub fn spawn_channel() -> Sender<ChannelPayload> {
 pub async fn send_command_to_channel(
     channel: &Sender<ChannelPayload>,
     bytes: &BytesMut,
-) -> Result<String> {
-    let (send, receive) = oneshot::channel::<String>();
+) -> Result<Vec<u8>> {
+    let (send, receive) = oneshot::channel::<Vec<u8>>();
     let command = match Command::new(bytes.to_owned()) {
         Ok(c) => c,
         Err(_) => return Err(anyhow!("unable to parse command")),
@@ -65,7 +89,7 @@ pub async fn send_command_to_channel(
 
     let _ = channel
         .send(ChannelPayload {
-            command: command,
+            command,
             responder: send,
         })
         .await;

@@ -29,8 +29,11 @@ async fn handle_stream(stream: TcpStream, channel: Sender<ChannelPayload>) -> Re
 
     while let Some(bytes) = connection.read().await.unwrap() {
         let value = send_command_to_channel(&channel, &bytes).await?;
-        let _ = connection.write(&value.as_bytes()).await;
-        connection.flush().await?;
+        let _ = connection.write(&value).await;
+
+        if connection.has_empty_buffer() {
+            connection.flush().await?;
+        }
     }
 
     Ok(())

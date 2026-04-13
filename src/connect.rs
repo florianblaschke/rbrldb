@@ -34,7 +34,7 @@ impl Connection {
     }
 
     fn parse(&mut self) -> Result<BytesMut> {
-        if self.buffer.len() >= 1 {
+        if !self.buffer.is_empty() {
             for i in 0..self.buffer.len() - 1 {
                 if self.buffer[i] == b'\r' && self.buffer[i + 1] == b'\n' {
                     let line = self.buffer.split_to(i);
@@ -48,12 +48,16 @@ impl Connection {
     }
 
     pub async fn write(&mut self, data: &[u8]) -> Result<()> {
-        self.stream.write(data).await?;
+        self.stream.write_all(data).await?;
         Ok(())
     }
 
     pub async fn flush(&mut self) -> Result<()> {
         self.stream.flush().await?;
         Ok(())
+    }
+
+    pub fn has_empty_buffer(&self) -> bool {
+        self.buffer.is_empty()
     }
 }
