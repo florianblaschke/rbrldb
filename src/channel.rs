@@ -1,13 +1,12 @@
-use anyhow::{Result, anyhow};
-use bytes::BytesMut;
-use tokio::sync::{
-    mpsc::{self, Sender},
-    oneshot,
-};
-
 use crate::{
     command::{Command, CommandType},
     memory::{Db, Store, Value},
+};
+use anyhow::{Result, anyhow};
+use bytes::BytesMut;
+use tokio::sync::{
+    mpsc::{self, Receiver, Sender},
+    oneshot,
 };
 
 pub struct ChannelPayload {
@@ -32,51 +31,59 @@ impl AsRef<[u8]> for Response {
 }
 
 pub fn spawn_channel() -> Sender<ChannelPayload> {
-    let mut db = Db::new();
     let (tx, mut rx) = mpsc::channel::<ChannelPayload>(32);
 
     tokio::spawn(async move {
-        while let Some(ChannelPayload { command, responder }) = rx.recv().await {
-            match command.kind {
-                CommandType::Health => {
-                    responder.send(Response::Ok.as_ref().into()).unwrap();
-                }
-                CommandType::Insert => {
-                    if let Some(payload) = command.payload {
-                        db.set(
-                            payload.key,
-                            Value {
-                                data: payload.value.into(),
-                                ttl: None,
-                            },
-                        );
-                        responder.send(Response::Ok.as_ref().into()).unwrap();
-                    } else {
-                        responder.send(Response::Error.as_ref().into()).unwrap();
-                    }
-                }
-                CommandType::Get => {
-                    if let Some(payload) = command.payload {
-                        match db.get(&payload.key) {
-                            Ok(v) => {
-                                responder.send(v).unwrap();
-                            }
-                            Err(_) => {
-                                responder.send(Response::NotFound.as_ref().into()).unwrap();
-                            }
-                        }
-                    } else {
-                        responder.send(Response::Error.as_ref().into()).unwrap();
-                    }
-                }
-                CommandType::Delete => panic!("not implemented delete"),
-            };
-        }
+        run_worker(&mut rx).await;
     });
 
     tx
 }
 
+#[tracing::instrument(name = "worker", skip(rx))]
+async fn run_worker(rx: &mut Receiver<ChannelPayload>) {
+    let mut db = Db::new();
+
+    while let Some(ChannelPayload { command, responder }) = rx.recv().await {
+        match command.kind {
+            CommandType::Health => {
+                tracing::info!("health response");
+                responder.send(Response::Ok.as_ref().into()).unwrap();
+            }
+            CommandType::Insert => {
+                if let Some(payload) = command.payload {
+                    db.set(
+                        payload.key,
+                        Value {
+                            data: payload.value.into(),
+                            ttl: None,
+                        },
+                    );
+                    responder.send(Response::Ok.as_ref().into()).unwrap();
+                } else {
+                    responder.send(Response::Error.as_ref().into()).unwrap();
+                }
+            }
+            CommandType::Get => {
+                if let Some(payload) = command.payload {
+                    match db.get(&payload.key) {
+                        Ok(v) => {
+                            responder.send(v).unwrap();
+                        }
+                        Err(_) => {
+                            responder.send(Response::NotFound.as_ref().into()).unwrap();
+                        }
+                    }
+                } else {
+                    responder.send(Response::Error.as_ref().into()).unwrap();
+                }
+            }
+            CommandType::Delete => panic!("not implemented delete"),
+        };
+    }
+}
+
+#[tracing::instrument(name = "send command to channel", skip(channel))]
 pub async fn send_command_to_channel(
     channel: &Sender<ChannelPayload>,
     bytes: &BytesMut,

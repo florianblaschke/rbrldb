@@ -1,15 +1,38 @@
 use rbrldb::startup::start_db;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    net::TcpStream,
+    net::{TcpListener, TcpStream},
     time::Instant,
 };
 
+pub struct TestApp {
+    address: String,
+}
+
+async fn spawn_app() -> TestApp {
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("failed to connect to rdm port");
+
+    let port = listener
+        .local_addr()
+        .expect("could not get local_addr")
+        .port();
+
+    let address = format!("127.0.0.1:{}", port);
+
+    tokio::spawn(async move {
+        start_db(listener).await;
+    });
+
+    TestApp { address }
+}
+
 #[tokio::test]
 async fn health_test() {
-    let addr = start_db("127.0.0.1:0").await;
+    let app = spawn_app().await;
 
-    let mut stream = TcpStream::connect(addr).await.unwrap();
+    let mut stream = TcpStream::connect(app.address).await.unwrap();
     stream.write(b"!;\r\n").await.unwrap();
 
     let mut buf = vec![0u8; 1024];
@@ -21,10 +44,10 @@ async fn health_test() {
 
 #[tokio::test]
 async fn insert_test() {
-    let addr = start_db("127.0.0.1:0").await;
+    let app = spawn_app().await;
 
     // now act as a client
-    let mut stream = TcpStream::connect(addr).await.unwrap();
+    let mut stream = TcpStream::connect(app.address).await.unwrap();
     stream.write(b"!;\r\n").await.unwrap();
     let mut buf = vec![0u8; 1024];
     let n = stream.read(&mut buf).await.unwrap();
@@ -57,8 +80,9 @@ async fn insert_test() {
 
 #[tokio::test]
 async fn pipeline_test() {
-    let addr = start_db("127.0.0.1:0").await;
-    let mut stream = TcpStream::connect(addr).await.unwrap();
+    let app = spawn_app().await;
+
+    let mut stream = TcpStream::connect(app.address).await.unwrap();
 
     async fn ping_health(stream: &mut TcpStream) {
         stream.write(b"!;\r\n").await.unwrap();
@@ -84,7 +108,7 @@ async fn pipeline_test() {
     let n = stream.read(&mut buf).await.unwrap();
     let response = std::str::from_utf8(&buf[..n]).unwrap();
     println!("{:?}", response);
-    // assert_eq!(response, "ok");
+    assert_eq!(response, "okokok");
 
     let batch_elapsed = batch_start.elapsed();
     println!("3 batched pings took: {:?}ms", batch_elapsed);
