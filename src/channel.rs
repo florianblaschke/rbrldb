@@ -78,7 +78,20 @@ async fn run_worker(rx: &mut Receiver<ChannelPayload>) {
                     responder.send(Response::Error.as_ref().into()).unwrap();
                 }
             }
-            CommandType::Delete => panic!("not implemented delete"),
+            CommandType::Delete => {
+                if let Some(payload) = command.payload {
+                    match db.delete(&payload.key) {
+                        Ok(_) => {
+                            responder.send(Response::Ok.as_ref().into()).unwrap();
+                        }
+                        Err(_) => {
+                            responder.send(Response::NotFound.as_ref().into()).unwrap();
+                        }
+                    }
+                } else {
+                    responder.send(Response::Error.as_ref().into()).unwrap();
+                }
+            }
         };
     }
 }

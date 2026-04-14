@@ -6,6 +6,7 @@ pub trait Store {
     fn new() -> Self;
     fn set(&mut self, key: String, value: Value);
     fn get(&self, key: &str) -> Result<Vec<u8>>;
+    fn delete(&mut self, key: &str) -> Result<Vec<u8>>;
 }
 
 #[derive(Debug)]
@@ -32,6 +33,16 @@ impl Store for Db {
 
     fn get(&self, key: &str) -> Result<Vec<u8>> {
         let value = self.map.get(key);
+
+        if let Some(v) = value {
+            Ok(v.data.clone())
+        } else {
+            Err(anyhow!("nf"))
+        }
+    }
+
+    fn delete(&mut self, key: &str) -> Result<Vec<u8>> {
+        let value = self.map.remove(key);
 
         if let Some(v) = value {
             Ok(v.data.clone())

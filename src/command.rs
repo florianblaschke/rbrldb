@@ -46,7 +46,13 @@ fn parse(b: &BytesMut) -> Result<(CommandType, Option<Payload>)> {
             });
             (CommandType::Get, payload)
         }
-        "-" => (CommandType::Delete, None),
+        "-" => (
+            CommandType::Delete,
+            Some(Payload {
+                key: rest.into(),
+                value: "".into(),
+            }),
+        ),
         _ => {
             return Err(anyhow!("unknown command"));
         }
@@ -68,16 +74,3 @@ fn parse_insert_payload(s: &str) -> Result<Option<Payload>> {
         value: value.into(),
     }))
 }
-
-// #[cfg(test)]
-// mod test {
-//     use super::*;
-
-//     #[test]
-//     fn test_parse_get_payload() {
-//         let s = "?;foo";
-
-//         let result = parse_get_payload(s).unwrap().unwrap();
-//         assert_eq!(result.key, "foo".to_string());
-//     }
-// }
