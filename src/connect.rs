@@ -44,7 +44,7 @@ impl Connection {
                         let num_bytes = get_skip_bytes(&slice[1..pos])?;
                         let skip_ahead = i + pos + 1 + num_bytes;
 
-                        if self.buffer.len() < skip_ahead {
+                        if self.buffer.len() < skip_ahead + 2 {
                             return Err(anyhow!("incomplete"));
                         }
 
