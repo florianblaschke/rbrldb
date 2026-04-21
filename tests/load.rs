@@ -43,7 +43,7 @@ async fn health_test() {
     let n = stream.read(&mut buf).await.unwrap();
     let response = std::str::from_utf8(&buf[..n]).unwrap();
 
-    assert_eq!(response, "ok");
+    assert_eq!(response, "ok\r\n");
 }
 
 #[tokio::test]
@@ -57,7 +57,29 @@ async fn insert_test() {
     let n = stream.read(&mut buf).await.unwrap();
     let response = std::str::from_utf8(&buf[..n]).unwrap();
 
-    assert_eq!(response, "ok");
+    assert_eq!(response, "ok\r\n");
+}
+
+#[tokio::test]
+async fn insert_val_with_registered_nurse_test() {
+    let app = spawn_app().await;
+
+    let mut stream = connect_stream(&app.address).await;
+    let payload = "this is a paragraph.\r\nfollowed by another.";
+    let s = format!("+;foo${};{}\r\n", payload.as_bytes().len(), payload);
+    stream.write(s.as_bytes()).await.unwrap();
+
+    let mut buf = vec![0u8; 1024];
+    let n = stream.read(&mut buf).await.unwrap();
+    let response = std::str::from_utf8(&buf[..n]).unwrap();
+
+    assert_eq!(response, "ok\r\n");
+
+    stream.write(b"?;foo\r\n").await.unwrap();
+    let mut buf = vec![0u8; 1024];
+    let n = stream.read(&mut buf).await.unwrap();
+    let response = std::str::from_utf8(&buf[..n]).unwrap();
+    assert_eq!(response, payload);
 }
 
 #[tokio::test]
@@ -71,7 +93,7 @@ async fn delete_test() {
     let n = stream.read(&mut buf).await.unwrap();
     let response = std::str::from_utf8(&buf[..n]).unwrap();
 
-    assert_eq!(response, "ok");
+    assert_eq!(response, "ok\r\n");
 
     stream.write(b"-;foo\r\n").await.unwrap();
 
@@ -79,7 +101,7 @@ async fn delete_test() {
     let n = stream.read(&mut buf).await.unwrap();
     let response = std::str::from_utf8(&buf[..n]).unwrap();
 
-    assert_eq!(response, "ok");
+    assert_eq!(response, "ok\r\n");
 
     stream.write(b"-;foo\r\n").await.unwrap();
 
@@ -101,13 +123,13 @@ async fn get_test() {
     let n = stream.read(&mut buf).await.unwrap();
     let response = std::str::from_utf8(&buf[..n]).unwrap();
 
-    assert_eq!(response, "ok");
+    assert_eq!(response, "ok\r\n");
 
     stream.write(b"?;foo\r\n").await.unwrap();
 }
 
 // #[tokio::test]
-// async fn insert_test() {
+// async fn load_test() {
 //     let app = spawn_app().await;
 
 //     // now act as a client
@@ -117,7 +139,7 @@ async fn get_test() {
 //     let n = stream.read(&mut buf).await.unwrap();
 //     let response = std::str::from_utf8(&buf[..n]).unwrap();
 
-//     assert_eq!(response, "ok");
+//     assert_eq!(response, "ok\r\n");
 
 //     let start = Instant::now();
 //     for i in 0..1_000_000 {
@@ -153,7 +175,7 @@ async fn pipeline_test() {
         let mut buf = vec![0u8; 1024];
         let n = stream.read(&mut buf).await.unwrap();
         let response = std::str::from_utf8(&buf[..n]).unwrap();
-        assert_eq!(response, "ok");
+        assert_eq!(response, "ok\r\n");
     }
 
     let now = Instant::now();
@@ -172,7 +194,7 @@ async fn pipeline_test() {
     let n = stream.read(&mut buf).await.unwrap();
     let response = std::str::from_utf8(&buf[..n]).unwrap();
     println!("{:?}", response);
-    assert_eq!(response, "okokok");
+    assert_eq!(response, "ok\r\nok\r\nok\r\n");
 
     let batch_elapsed = batch_start.elapsed();
     println!("3 batched pings took: {:?}ms", batch_elapsed);

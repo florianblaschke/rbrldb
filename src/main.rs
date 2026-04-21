@@ -6,7 +6,7 @@ use tokio::net::TcpListener;
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    let subscriber = get_subscriber("kv_store".into(), "info".into(), std::io::stdout);
+    let subscriber = get_subscriber("kv_store".into(), "error".into(), std::io::stdout);
     init_subscriber(subscriber);
 
     let addr = format!("{}:{}", "127.0.0.1", "7878");

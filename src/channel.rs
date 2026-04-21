@@ -23,27 +23,26 @@ enum Response {
 impl AsRef<[u8]> for Response {
     fn as_ref(&self) -> &[u8] {
         match self {
-            Self::Ok => b"ok",
-            Self::Error => b"error",
-            Self::NotFound => b"nf",
+            Self::Ok => b"ok\r\n",
+            Self::Error => b"error\r\n",
+            Self::NotFound => b"nf\r\n",
         }
     }
 }
 
 pub fn spawn_channel() -> Sender<ChannelPayload> {
+    let db = Db::new();
     let (tx, mut rx) = mpsc::channel::<ChannelPayload>(32);
 
     tokio::spawn(async move {
-        run_worker(&mut rx).await;
+        run_worker(&mut rx, db).await;
     });
 
     tx
 }
 
 #[tracing::instrument(name = "worker", skip(rx))]
-async fn run_worker(rx: &mut Receiver<ChannelPayload>) {
-    let mut db = Db::new();
-
+async fn run_worker(rx: &mut Receiver<ChannelPayload>, mut db: Db) {
     while let Some(ChannelPayload { command, responder }) = rx.recv().await {
         match command.kind {
             CommandType::Health => {
